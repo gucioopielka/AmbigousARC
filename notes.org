@@ -1,0 +1,23 @@
+* chat vs non-chat queries
+* horizontal/vertical matrix 
+* matrix/concept to multiple choice
+    - switch matrix to be correct in example?
+* color vs ints
+* SAE
+    - per response time
+    - entropy
+    - 
+* simpleARC?
+* SQL new items?
+* system prompt
+    - [Assistant] etc - change per model? 
+
+[20. 09. 24]
+- distance matrices matrix./concept
+- prediction of matrix/concept by matrices features
+- do you see the relation abcd? rule check
+
+[27. 09. 24]
+- check hypothesis similarity of input to matrix -> matrix
+- add verb/clarity to concepts labels
+

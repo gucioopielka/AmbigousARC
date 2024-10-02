@@ -1,0 +1,7 @@
+data/results
+# all pycache directories
+__pycache__
+# all pycache files
+*.pyc
+# all ds store files
+.DS_Store
