@@ -49,13 +49,13 @@ class ModelEval():
         if self.dataset.question_type == 'open_ended':
             self.clean_responses = []
             self.logprobs = []
-            for response in results:
-                clean_response = self.clean_open_ended_response(response['message'])
+            # for response in results:
+            #     clean_response = self.clean_open_ended_response(response['message'])
                 
-                self.clean_responses.append(clean_response)
+            #     self.clean_responses.append(clean_response)
 
-            # self.clean_responses = [self.clean_open_ended_response(response['message']) for response in results]
-            # self.logprobs = [response['logprobs'] for idx, response in enumerate(results)]
+            self.clean_responses = [self.clean_open_ended_response(response['message']) for response in results]
+            self.logprobs = [response['logprobs'] for idx, response in enumerate(results)]
             self.matrix_responses = accuracy(np.array(self.dataset.y)[:, 0], self.clean_responses)
             self.concept_responses = accuracy(np.array(self.dataset.y)[:, 1], self.clean_responses)
             

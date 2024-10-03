@@ -1,7 +1,6 @@
 import numpy as np
-import random
+import json
 from typing import *
-from utils.globals import *
 from utils.plot_utils import *
 
 def convert_to_array(x: str, dim: int) -> np.array:
@@ -71,7 +70,7 @@ def array_to_str(array: np.array, encoding='int', show_brackets=True)  -> str:
 class AmbigousARCDataset:
     def __init__(
         self, 
-        items_data: dict,
+        items_data: dict = None,
         batch_size: int = 1,
         question_type: str = 'open_ended',
         example_item: bool = True,
@@ -79,7 +78,7 @@ class AmbigousARCDataset:
         encoding: str = 'int',
         seed: int = None,
         concept_answer_n: int = None
-    ):
+    ):  
         assert question_type in ['open_ended', 'multiple_choice', 'concept_task'], f"Invalid question type '{question_type}'"
         assert encoding in ['int', 'color'], f"Invalid encoding '{encoding}'"
         if seed:    
@@ -88,6 +87,10 @@ class AmbigousARCDataset:
             self.rng = np.random.default_rng(seed)
         else:
             self.rng = np.random.default_rng()
+
+        if items_data is None:
+            from utils.globals import ITEMS_FILE
+            items_data = json.load(open(ITEMS_FILE, 'rb'))
 
         self.items_data = items_data
         self.items = list(self.items_data.keys())[1:] # Remove example item
@@ -255,13 +258,3 @@ class AmbigousARCDataset:
     def plot(self, item: str, title: str=None,  **kwargs):
         arrs = item_to_arrays(item, self.items_data, matrices=['A', 'B', 'C', 'D_concept', 'D_matrix', 'D_random'])
         plot_item(arrays=arrs, title=title, **kwargs)
-
-        
-# print(AmbigousARCDataset(
-#     items_data=json.load(open(ITEMS_FILE, 'rb')),
-#     batch_size=1,
-#     question_type='concept_task',
-#     example_item=True,
-#     seed=42,
-#     encoding='color'
-# ).unique_concepts)
