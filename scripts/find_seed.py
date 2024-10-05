@@ -10,7 +10,7 @@ for seed in tqdm(range(1, 1000)):
     dataset = AmbigousARCDataset(
         items_data=json.load(open(ITEMS_FILE, 'rb')),
         batch_size=1,
-        question_type='multiple_choice',
+        task='multiple_choice',
         example_item=True,
         random_mat=False,
         seed=seed
@@ -29,7 +29,7 @@ print(list(range(1, 1000))[np.argmin(randomness)])
 dataset = AmbigousARCDataset(
     items_data=json.load(open(ITEMS_FILE, 'rb')),
     batch_size=1,
-    question_type='multiple_choice',
+    task='multiple_choice',
     example_item=True,
     random_mat=False,
     seed=42
@@ -46,7 +46,7 @@ for seed in tqdm(range(1, 10000)):
     dataset = AmbigousARCDataset(
         items_data=json.load(open(ITEMS_FILE, 'rb')),
         batch_size=1,
-        question_type='concept_task',
+        task='concept_task',
         example_item=True,
         random_mat=False,
         seed=9123,

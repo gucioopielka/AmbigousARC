@@ -72,22 +72,18 @@ class AmbigousARCDataset:
         self, 
         items_data: dict = None,
         batch_size: int = 1,
-        question_type: str = 'open_ended',
+        task: str = 'generation',
         example_item: bool = True,
         random_mat: bool = False,
         encoding: str = 'int',
         seed: int = None,
         concept_answer_n: int = None
     ):  
-        assert question_type in ['open_ended', 'multiple_choice', 'concept_task'], f"Invalid question type '{question_type}'"
-        assert encoding in ['int', 'color'], f"Invalid encoding '{encoding}'"
+        assert task in ['generation', 'discrimination', 'recognition'], f'Invalid task "{task}"'
+        assert encoding in ['int', 'color'], f"Invalid encoding type '{encoding}'"
         if seed:    
             np.random.seed(seed)
-            #random.seed(seed)
-            self.rng = np.random.default_rng(seed)
-        else:
-            self.rng = np.random.default_rng()
-
+        
         if items_data is None:
             from utils.globals import ITEMS_FILE
             items_data = json.load(open(ITEMS_FILE, 'rb'))
@@ -100,21 +96,23 @@ class AmbigousARCDataset:
         self.num_batches = self.calculate_n_batches(batch_size)
         self.encoding = encoding
         self.random_mat = random_mat
-        self.question_type = question_type
+        self.task = task
+        self.seed = seed
+        self.example_item = example_item
+        self.concept_answer_n = concept_answer_n
 
-        if question_type == 'concept_task':
+        if task == 'recognition':
             self.unique_concepts = sorted(set(self.concepts))            
-            self.concept_answer_n = concept_answer_n
 
         # Prepare the one-shot example item
         if example_item:
-            if question_type == 'open_ended':
-                self.example = self.open_ended('example', example=True)[0]
+            if task == 'generation':
+                self.example = self.generation('example', example=True)[0]
             else:
-                if question_type == 'multiple_choice':
-                    self.example = self.multiple_choice(self.items[0], random_mat=random_mat, show_answer=True)[0]  
+                if task == 'discrimination':
+                    self.example = self.discrimination(self.items[0], random_mat=random_mat, show_answer=True)[0]  
                 else: 
-                    self.example = self.concept_task(self.items[0], show_answer=True)[0]
+                    self.example = self.recognition(self.items[0], show_answer=True)[0]
 
                 # Remove example item from the list
                 self.items = self.items[1:] 
@@ -126,12 +124,12 @@ class AmbigousARCDataset:
         self.x = []
         self.y = []
         for item in self.items:
-            if question_type == 'open_ended':
-                formatted_item, y = self.open_ended(item)  
-            elif question_type == 'concept_task':
-                formatted_item, y = self.concept_task(item)
+            if task == 'generation':
+                formatted_item, y = self.generation(item)  
+            elif task == 'recognition':
+                formatted_item, y = self.recognition(item)
             else:
-                formatted_item, y = self.multiple_choice(item, random_mat=random_mat)
+                formatted_item, y = self.discrimination(item, random_mat=random_mat)
 
             if example_item:
                 formatted_item = f'EXAMPLE TASK:\n\n{self.example}\n\nTEST TASK:\n\n{formatted_item}'
@@ -153,7 +151,7 @@ class AmbigousARCDataset:
         batch_answers = self.y[start_idx:end_idx]
         return batch_prompts, batch_answers
     
-    def open_ended(self, item, example=False):
+    def generation(self, item, example=False):
         mats = ['A', 'B', 'C', 'D'] if example else ['A', 'B', 'C', 'D_matrix', 'D_concept']
         arrays = item_to_arrays(item, self.items_data, matrices=mats)
         arrays_str = [array_to_str(arr, self.encoding) for arr in arrays]
@@ -162,7 +160,7 @@ class AmbigousARCDataset:
         ys = [encode_array(arr) for arr in arrays[3:]]
         return prompt, ys
     
-    def multiple_choice(self, item, random_mat=False, show_answer=False):
+    def discrimination(self, item, random_mat=False, show_answer=False):
         # Get the arrays for the item, and optionally append a random matrix
         arrays = item_to_arrays(item, self.items_data, matrices=['A', 'B', 'C', 'D_matrix', 'D_concept']) 
         if random_mat:
@@ -194,7 +192,7 @@ class AmbigousARCDataset:
         # Return the generated prompt and a list of correct answers
         return prompt, [matrix, concept, random] if random_mat else [matrix, concept]
     
-    def concept_task(self, item, show_answer=False):
+    def recognition(self, item, show_answer=False):
         # Get the arrays for the item
         arrays = item_to_arrays(item, self.items_data, matrices=['A', 'B', 'C', 'D_concept'])
         arrays_str = [array_to_str(arr, self.encoding) for arr in arrays]
@@ -258,3 +256,14 @@ class AmbigousARCDataset:
     def plot(self, item: str, title: str=None,  **kwargs):
         arrs = item_to_arrays(item, self.items_data, matrices=['A', 'B', 'C', 'D_concept', 'D_matrix', 'D_random'])
         plot_item(arrays=arrs, title=title, **kwargs)
+    
+    def get_config(self):
+        return {
+            'task': self.task,
+            'example_item': self.example_item,
+            'encoding': self.encoding,
+            'random_mat': self.random_mat,
+            'concept_answer_n': self.concept_answer_n,
+            'seed': self.seed,
+            'batch_size': self.batch_size,
+        }

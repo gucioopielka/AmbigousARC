@@ -69,7 +69,10 @@ def run_experiment(input_prompts: List[str],
             json.dump({}, open(intermediate_results_path, 'w')) # Create an empty file
         data_dict = json.load(open(intermediate_results_path, 'r'))
         # Remove models that have already been queried
-        models = [model for model in models if model not in data_dict.keys()]
+        models = [model for model in models if model not in data_dict.keys()]        
+        if not models:
+            print('All models have already been queried')
+            return data_dict
     else:
         data_dict = {}
 
@@ -96,6 +99,6 @@ def run_experiment(input_prompts: List[str],
 
             # Save intermediate results
             if intermediate_results_path:
-                    json.dump(data_dict, open(intermediate_results_path, 'w'), indent=4)
+                json.dump(data_dict, open(intermediate_results_path, 'w'), indent=4)
 
     return data_dict

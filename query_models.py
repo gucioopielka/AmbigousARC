@@ -26,7 +26,7 @@ if __name__ == '__main__':
     dataset = AmbigousARCDataset(
         items_data=items_data,
         batch_size=args.batch_size,
-        question_type=args.question_type,
+        task=args.question_type,
         random_mat=args.random_mat,
         example_item=args.example_item,
         concept_answer_n=args.concept_answer_n,
@@ -37,9 +37,13 @@ if __name__ == '__main__':
     # Run the experiment
     results = run_experiment(
         input_prompts=dataset.x, 
-        models=model_list, 
+        models=[model_list[0]], 
         system_prompt=args.system_prompt,
         logprobs=args.logprobs,
         max_tokens=args.max_tokens,
         intermediate_results_path=args.results_file
     )
+
+    # Save the results
+    results['data_config'] = dataset.get_config()
+    json.dump(results, open(args.results_file, 'w'), indent=4)

@@ -21,3 +21,7 @@
 - check hypothesis similarity of input to matrix -> matrix
 - add verb/clarity to concepts labels
 
+[04. 09. 24]
+- sql creds
+- lumi
+- steven reimbursement
