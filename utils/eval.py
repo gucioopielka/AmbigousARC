@@ -56,16 +56,11 @@ class ModelEval():
             #     self.clean_responses.append(clean_response)
 
             self.clean_responses = [self.clean_generation_response(response['message']) for response in results]
-            self.logprobs = [response['logprobs'] for idx, response in enumerate(results)]
+            self.logprobs = [np.exp(response['logprobs']) for idx, response in enumerate(results)]
             self.matrix_responses = accuracy(np.array(self.dataset.y)[:, 0], self.clean_responses)
             self.concept_responses = accuracy(np.array(self.dataset.y)[:, 1], self.clean_responses)
             
         if self.dataset.task == 'discrimination' or self.dataset.task == 'recognition':
-            # Prepare the possible tokens
-            if self.dataset.task == 'discrimination':
-                self.answer_choices = ['a', 'b', 'c'] if self.dataset.random_mat else ['a', 'b']
-            else:
-                self.answer_choices = [chr(97 + i) for i in range(len(set(self.dataset.y)))]
             self.possible_tokens = self.get_possible_tokens(prepended_symbols, append_symbols)
             
             # Clean the responses
@@ -76,7 +71,7 @@ class ModelEval():
             for response, y in zip(results, self.dataset.y):            
                 response_clean, token_idx = self.clean_mc_response(response['tokens'])
                 self.clean_responses.append(response_clean)
-                self.logprobs.append(response['logprobs'][token_idx] if response_clean else None) # logprobs for the answer choice
+                self.logprobs.append(np.exp(response['logprobs'][token_idx]) if response_clean else None) # logprobs for the answer choice
                 
                 if self.choices is not None:
                     # Convert the response to the index of the answer choice (0: matrix, 1: concept, 2: random)
@@ -84,15 +79,16 @@ class ModelEval():
 
             # Answer choices proportions
             self.answer_props = {}
-            for answer in self.answer_choices:
+            for answer in self.dataset.answer_options:
                 if len([i for i in self.clean_responses if i]) > 0:
                     self.answer_props[answer] = sum([i == answer for i in self.clean_responses])/len([i for i in self.clean_responses if i])
                 else:
                     self.answer_props[answer] = None
 
+            # Proportion test 
             if len([i for i in self.clean_responses if i]) > 0:
-                observed = [sum([i == answer for i in self.clean_responses]) for answer in self.answer_choices]
-                expected = [len([i for i in self.clean_responses if i]) / len(self.answer_choices)] * len(self.answer_choices)
+                observed = [sum([i == answer for i in self.clean_responses]) for answer in self.dataset.answer_options]
+                expected = [len([i for i in self.clean_responses if i]) / len(self.dataset.answer_options)] * len(self.dataset.answer_options)
                 self.prop_test_p = self.prop_test(observed, expected)
             else:
                 self.prop_test_p = None
@@ -109,7 +105,7 @@ class ModelEval():
             
     def get_possible_tokens(self, prepended_symbols: List[str], append_symbols: List[str]) -> List[str]:
         possible_tokens = []
-        for i in self.answer_choices:
+        for i in self.dataset.answer_options:
             for j in prepended_symbols:
                 possible_tokens.append(j + i)
             for j in append_symbols:
@@ -126,7 +122,7 @@ class ModelEval():
         
         # return the answer choice option
         if choice:
-            return [i for i in self.answer_choices if i in choice][0], tokens.index(choice)
+            return [i for i in self.dataset.answer_options if i in choice][0], tokens.index(choice)
         else:
             return None, None
         
@@ -149,19 +145,17 @@ class Eval():
         # Load the results
         if isinstance(results, dict):
             self.results = results
-        else:
+        elif isinstance(results, str):
             self.results = json.load(open(results, 'r'))
 
         # Load the dataset
         if 'data_config' in self.results:
             dataset_config = self.results.pop('data_config')
-        assert dataset or dataset_config, "Either dataset or dataset_config must be provided"
-
-        if not dataset:
-            self.dataset = AmbigousARCDataset(**dataset_config)
         else:
-            self.dataset = dataset
-        
+            dataset_config = None
+        assert dataset or dataset_config, "Either dataset or dataset_config in the results json is required"
+        self.dataset = AmbigousARCDataset(**dataset_config) if dataset_config else dataset
+
         self.question_type = self.dataset.task  
         self.all_models_n = len(self.results)
         self.models_names = list(self.results.keys())
@@ -170,7 +164,7 @@ class Eval():
         self.excluded_models_prop_test = []
 
         if no_response_thresh:
-            # Exclude models with high no response rate
+            # Exclude models with high no response rate 
             self.excluded_models_no_response = [model for model in self.models if len([i for i in model.clean_responses if i]) < int(no_response_thresh*self.dataset.size)]
             self.models = [model for model in self.models if len([i for i in model.clean_responses if i]) >= int(no_response_thresh*self.dataset.size)]
             self.models_names = [model.name for model in self.models]
@@ -183,6 +177,7 @@ class Eval():
 
         if self.question_type == 'discrimination' or self.question_type == 'generation':     
             self.concept_responses = [model.concept_responses for model in self.models]
+            print(self.concept_responses)
             self.matrix_responses = [model.matrix_responses for model in self.models]
             self.random_responses = [model.random_responses for model in self.models] if self.dataset.random_mat else None
 
@@ -219,7 +214,7 @@ class Eval():
             return None
         
         df_config = {
-            'item_id': np.tile(self.dataset.items, len(self.models)),
+            'item_id': np.tile(self.dataset.item_ids, len(self.models)),
             'model': np.repeat(self.models_names, self.dataset.size),
             'response': np.concatenate([model.clean_responses for model in self.models]),
             'concept': np.tile(self.dataset.concepts, len(self.models)),

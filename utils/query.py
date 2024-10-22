@@ -2,14 +2,13 @@ import time
 import os
 import json
 from typing import *
-from together import Together
 from tqdm import tqdm
-
-together_api_key = os.getenv('TOGETHER_API_KEY')
-client = Together(api_key=together_api_key)
-model_list = [model.id for model in client.models.list() if model.type in ['chat', 'language']]
+import signal
+from openai import OpenAI
+from together import Together
 
 def query_model(
+            client: OpenAI|Together,
             model: str,
             input_prompt: str,
             system_prompt: str = None,
@@ -60,13 +59,19 @@ def query_model(
 def run_experiment(input_prompts: List[str],
                    models: List[str],
                    system_prompt: str = None,
-                   intermediate_results_path: str=None,
+                   intermediate_results_path: str = None,
+                   query_timeout: int = 60,  # Timeout in seconds for each model query
+                   rate_limit: float = 0.02,  # Time to sleep between queries
                    **kwargs) -> Dict:
+    # Define a handler for the timeout
+    def handler(signum, frame):
+        raise TimeoutError
+    signal.signal(signal.SIGALRM, handler)
 
-    # Iniatialize dictionairy
+    # Initialize dictionary
     if intermediate_results_path:
         if not os.path.exists(intermediate_results_path):
-            json.dump({}, open(intermediate_results_path, 'w')) # Create an empty file
+            json.dump({}, open(intermediate_results_path, 'w'))  # Create an empty file
         data_dict = json.load(open(intermediate_results_path, 'r'))
         # Remove models that have already been queried
         models = [model for model in models if model not in data_dict.keys()]        
@@ -86,11 +91,16 @@ def run_experiment(input_prompts: List[str],
         # Input all the items to the model
         for input_prompt in tqdm(input_prompts):
             try:
+                signal.alarm(query_timeout)  # Start the timeout clock
                 response = query_model(model, input_prompt, system_prompt, **kwargs)
                 model_responses.append(response)
-                time.sleep(0.02)
-            except:
-                print(f"Calling {model} failed")
+                signal.alarm(0)  # Reset the alarm once the query completes
+                time.sleep(rate_limit) # Sleep for a bit to avoid rate limiting
+            except TimeoutError:
+                print(f"Query for {model} timed out!")
+                break
+            except Exception as e:
+                print(f"Calling {model} failed: {str(e)}")
                 break
         
         # Check if all the items have been queried

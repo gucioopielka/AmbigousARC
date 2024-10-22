@@ -53,17 +53,20 @@ def plot_item(
     labels: List[str]=['A', 'B', 'C', 'D Concept', 'D Matrix'],
     **kwargs
 ):  
-    assert len(arrays) in [5, 6], f"Invalid number of arrays: {len(arrays)}"
+    assert len(arrays) in [4, 5, 6], f"Invalid number of arrays: {len(arrays)}"
 
-    if len(labels) != len(arrays):
-        labels = labels + ['D Random'] if len(arrays) == 6 else labels
-    
     # Initialize the subplots
-    fig, ax = plt.subplots(3, 3, figsize=(4, 5), dpi=300)
+    n_row = 2 if len(arrays) == 4 else 3
+    fig, ax = plt.subplots(n_row, 3, figsize=(4, n_row+2), dpi=300)
     axs = ax.flatten()
 
+    empty_idx = {
+        4: [1, 4],
+        5: [1, 4, 5, 7],
+        6: [1, 4, 5]
+    }.get(len(arrays))
+
     # Plot the matrices
-    empty_idx = [1, 4, 5, 7] if len(arrays) == 5 else [1, 4, 5]
     arr_idx = 0
     for i, ax in enumerate(axs):
         if i not in empty_idx:

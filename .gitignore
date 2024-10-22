@@ -5,3 +5,13 @@ __pycache__
 *.pyc
 # all ds store files
 .DS_Store
+
+data/matrices_sql.json
+data/items_old.json
+scripts/data_prep_json.py
+scripts/get_sae_percentiles.py
+data/items.json
+data/items_old_.json
+data/sae
+
+notes.org

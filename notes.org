@@ -25,3 +25,8 @@
 - sql creds
 - lumi
 - steven reimbursement
+
+[11. 09. 24]
+- string distances
+- copy option
+- run on more items
