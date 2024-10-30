@@ -10,5 +10,5 @@ with open(globals_path, "r") as stream:
     data = yaml.safe_load(stream)
 
 # Define global variables
-FILES = [data[key] for key in ["ITEMS_FILE", "RESULTS_DIR"]]
+FILES = [os.path.join(base_dir, '..', data[file]) for file in data.keys()]
 ITEMS_FILE, RESULTS_DIR = FILES
