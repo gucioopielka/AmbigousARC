@@ -1,21 +1,47 @@
 #!/bin/bash
 
-models=(
-    'Qwen/Qwen1.5-72B-Chat'
-    'Qwen/Qwen1.5-110B-Chat'
-    'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo'
-    'meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo'
-    'google/gemma-2-9b-it'
-    'google/gemma-2-27b-it'
-)
+# Load models from YAML file
+yaml() { python3 -c "import yaml; print('\n'.join(yaml.safe_load(open('$1'))$2))" ; }
+models=($(yaml globals.yml "['MODEL_IDS']"))
 
+# Color mirror
+printf "\nRunning color mirror...\n"
 python3 query_models.py \
     --models "${models[@]}" \
     --concept_answer_n 4 \
     --random_mat \
-    --find_best_seed True \
-    --duplicate "c" \
+    --find_best_seed \
+    --duplicate c \
     --n_mirror 4 \
-    --example_item \
+    --example_item different \
     --encoding int \
-    --results_dir data/results/run_2024-10-23
+    --mirror_type color \
+    --results_dir data/results/run_2024-11-12
+
+# Example mirror
+printf "\nRunning example mirror...\n"
+python3 query_models.py \
+    --models "${models[@]}" \
+    --concept_answer_n 4 \
+    --random_mat \
+    --find_best_seed \
+    --duplicate c \
+    --n_mirror 4 \
+    --example_item different \
+    --encoding int \
+    --mirror_type example \
+    --results_dir data/results/run_example_2024-11-12
+
+# Color encoding
+printf "\nRunning color encoding...\n"
+python3 query_models.py \
+    --models "${models[@]}" \
+    --concept_answer_n 4 \
+    --random_mat \
+    --find_best_seed \
+    --duplicate c \
+    --n_mirror 4 \
+    --example_item different \
+    --encoding color \
+    --mirror_type color \
+    --results_dir data/results/run_ColorEncoding_2024-11-13

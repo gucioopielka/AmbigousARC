@@ -49,8 +49,9 @@ def plot_matrix(matrix: np.array, title: str, ax=None, size=14, grid_color='grey
  
 def plot_item(
     arrays: List[np.array],
-    title: str=None,
-    labels: List[str]=['A', 'B', 'C', 'D Concept', 'D Matrix'],
+    title: str = None,
+    labels: List[str] = ['A', 'B', 'C', 'D Concept', 'D Matrix'],
+    return_fig: bool = False,
     **kwargs
 ):  
     assert len(arrays) in [4, 5, 6], f"Invalid number of arrays: {len(arrays)}"
@@ -84,4 +85,11 @@ def plot_item(
     if title:
         fig.suptitle(title, size=14)
 
-    plt.show()
+    if return_fig:
+        plt.close(fig) # Close the figure to avoid displaying
+        return fig, ax  
+    else:
+        plt.show()
+
+arrays = [np.random.rand(5, 5) for _ in range(5)]
+plot_item(arrays, title='Random Matrices', return_fig=True)

@@ -6,6 +6,7 @@ from utils.plot_utils import *
 from scipy.stats import chisquare
 from itertools import permutations
 from tqdm import tqdm
+from utils.globals import ITEMS_FILE
 
 def convert_to_array(x: str, dim: int) -> np.array:
     return np.array([int(char) for char in x]).reshape(dim, dim)
@@ -63,13 +64,36 @@ def array_to_str(array: np.array, encoding='int', show_brackets=True)  -> str:
     return s
 
 def generate_seed(value, seed=None):
+    '''Generate a hash seed for a given value'''
     hash_object = hashlib.md5(value.encode())
     hash_int = int(hash_object.hexdigest(), 16)
-    return (hash_int + (seed if seed else 0)) % (2**32 - 1)
+    return (hash_int + (seed if seed else 0)) % (2**32 - 1) # Numpy seed must be between 0 and 2**32 - 1
+
+def get_d_matrix(item, level='pixel'):
+    assert level in ['pixel', 'row'], f"Invalid level: {level}"
+    dim = int(len(item['A'])**0.5)
+    d_matrix = ''
+
+    if level == 'pixel':
+        for a, b, c in zip(item['A'], item['B'], item['C']):
+            if a == b:
+                d_matrix += c
+            else:
+                d_matrix += b
+                
+    if level == 'row':
+        mats = [convert_to_array(mat, dim) for mat in [item['A'], item['B'], item['C']]]
+        for a, b, c in zip(*mats):
+            if np.array_equal(a, b):
+                d_matrix += encode_array(c)
+            else:
+                d_matrix += encode_array(b)
+    
+    return d_matrix
 
 def create_mirror_data(data: list, n_mirror: int, seed: int=None, max_iter=10):
     # All possible matrices
-    matrices = ['A', 'B', 'C', 'D_Concept', 'D_Matrix', 'D_random']
+    matrices = ['A', 'B', 'C', 'D_Concept', 'D_Matrix', 'D_Random']
 
     def create_mirror_color_map(item: dict, seed=None) -> dict:
         if seed is not None:
@@ -171,6 +195,7 @@ def find_seed(data_cfg, n_iter = 100):
 
     data_cfg['find_best_seed'] = False
     expected_combinations = None
+    best_idx = None
     randomness = {
         'seed': [],
         'p_value': [],
@@ -199,14 +224,30 @@ def find_seed(data_cfg, n_iter = 100):
 
         # Check if the observed matches any of the expected combinations
         if any(np.array_equal(observed, exp) for exp in expected_combinations):
-            print(f"Stopping at seed {seed}: observed matches one of the expected integer combinations.")
+            print(f"Stopping at seed {seed}: observed values match one of the expected combinations")
+            best_idx = seed - 1
             break
 
-    best_seed = randomness['seed'][np.argmax(randomness['p_value'])]
-    observed_best = randomness['observed'][np.argmax(randomness['p_value'])]
+    best_idx = best_idx if best_idx is not None else np.argmax(randomness['p_value'])
+    best_seed = randomness['seed'][best_idx]
+    observed_best = randomness['observed'][best_idx]
     observed_best = {chr(97 + i): observed_best[i] for i in range(len(observed_best))}
-    print(f"Best seed: {best_seed} || Observed: {observed_best} || p-value: {round(max(randomness['p_value']), 2)}")
+    print(f"Best seed: {best_seed} || Observed: {observed_best} || p-value: {round(randomness['p_value'][best_idx], 2)}")
+
     return best_seed
+
+def has_exact_consecutive_elements(lst, target_count):
+    current_count = 1
+    for i in range(1, len(lst)):
+        if lst[i] == lst[i - 1]:
+            current_count += 1
+        else:
+            if current_count % target_count != 0:
+                return False
+            current_count = 1
+            
+    # Check the last sequence after the loop
+    return current_count % target_count == 0
 
 class AmbigousARCDataset:
     def __init__(
@@ -214,32 +255,41 @@ class AmbigousARCDataset:
         items_data: List|str = None,
         batch_size: int = 1,
         task: str = 'generation',
-        example_item: bool = True,
+        example_item: str = 'different',
         random_mat: bool = True,
         duplicate: str = None,
         encoding: str = 'int',
         find_best_seed: bool = False,
         n_iter_seed: int = 100,
+        d_matrix_level: str = 'pixel',
+        filter_items_list: List[str] = None,
         seed: int = None,
         seed_static = 42,
-        concept_answer_n: int = 3,
-        n_mirror: int = 0
+        concept_answer_n: int = 4,
+        n_mirror: int = 0,
+        mirror_type: str = 'color',
+        matrix_rotation: bool = False
     ):  
         assert task in ['generation', 'discrimination', 'recognition'], f'Invalid task "{task}"'
+        assert example_item in ['same', 'different', 'no_example'], f'Invalid example item type "{example_item}"'
         assert encoding in ['int', 'color'], f"Invalid encoding type '{encoding}'"
         assert duplicate in [None, 'random', 'a', 'b', 'c'], f"Invalid duplicate type '{duplicate}'"
+        assert d_matrix_level in ['pixel', 'row'], f"Invalid D matrix level '{d_matrix_level}'"
+        assert mirror_type in ['color', 'example'], f"Invalid mirror type '{mirror_type}'"
 
         # Load the items data
-        if items_data is None:
-            from utils.globals import ITEMS_FILE
+        if items_data is None:            
             items_data = json.load(open(ITEMS_FILE, 'rb'))
-            self.items_data_path = str(ITEMS_FILE)
         elif isinstance(items_data, str):
-            self.items_data_path = items_data
             items_data = json.load(open(items_data, 'rb'))
+        elif isinstance(items_data, list):
+            pass
+        else:
+            raise ValueError("Invalid items data type. It should be a list of items or a path to a JSON file.")
 
         # Set the configuration
         self.encoding = encoding
+        self.d_matrix_level = d_matrix_level
         self.batch_size = batch_size
         self.random_mat = random_mat
         self.duplicate = duplicate
@@ -249,33 +299,61 @@ class AmbigousARCDataset:
         self.concept_answer_n = concept_answer_n
         self.n_mirror = n_mirror
         self.example_item = example_item
+        self.filter_items_list = filter_items_list
+        self.mirror_type = mirror_type
+        self.matrix_rotation = matrix_rotation
         
         # Find the best seed for the dataset
         if find_best_seed:
             assert self.task in ['discrimination', 'recognition'], f"Only 'discrimination' and 'recognition' tasks are supported for finding the best seed."
-            cfg = {'items_data': self.items_data_path, **self.get_config()}
+            items_data_copy = json.loads(json.dumps(items_data)) # Deep copy the items data
+            cfg = {'items_data': items_data_copy, **self.get_config()}
+            cfg['filter_items_list'] = None
             self.seed = find_seed(cfg, n_iter_seed)
+
+        # Generate the D matrix for the items
+        for item in items_data:
+            item['D_Matrix'] = get_d_matrix(item, d_matrix_level)
 
         # Generate random matrices for the items
         if random_mat and task == 'discrimination':
             for idx, item in enumerate(items_data):
-                items_data[idx]['D_random'] = encode_array(self.random_matrix(item, seed_static))
+                items_data[idx]['D_Random'] = encode_array(self.random_matrix(item, seed_static))
+
+        # Rotate the matrices
+        if matrix_rotation:
+            for idx, item in enumerate(items_data):
+                matrices = ['A', 'B', 'C', 'D_Concept', 'D_Matrix']
+                matrices += ['D_Random'] if random_mat and task == 'discrimination' else []
+                for mat in matrices:
+                    items_data[idx][mat] = encode_array(np.rot90(convert_to_array(item[mat], int(len(item['A'])**0.5))))
 
         # Create mirror items
         if n_mirror > 0:
-            items_data = create_mirror_data(items_data, n_mirror, seed_static)
-        else:
-            # _1 signifies the original item
+            if mirror_type == 'color':
+                items_data = create_mirror_data(items_data, n_mirror, seed_static)
+
+            elif mirror_type == 'example':
+                new_data = []
+                for item in items_data:
+                    for i in range(1, n_mirror+2):
+                        original_item = item.copy()
+                        original_item['id'] = original_item["id"] + f'_{i}'
+                        new_data.append(original_item)
+                items_data = new_data
+        else: 
             for item in items_data:
                 item['id'] = item['id'] + '_1'
+
 
         # Set the dataset properties
         self.items_data = items_data
         self.item_ids = [item['id'] for item in self.items_data]
         self.size = len(self.items_data) # Number of all items (including mirrors)
-        self.n_items = len(set(i.split('_')[0] for i in self.item_ids)) # Main items
+        self.item_main_ids = [i.split('_')[0] for i in self.item_ids]
+        self.n_items = len(set(self.item_main_ids)) # Main items
         self.concepts = [item['concept'] for item in self.items_data]
-        self.unique_concepts = sorted(set(self.concepts))            
+        self.unique_concepts = sorted(set(self.concepts))     
         self.num_batches = self.calculate_n_batches(batch_size)
         self.concept_answer_n = len(self.unique_concepts) if concept_answer_n == -1 else concept_answer_n
         self.input_matrices = [[item['A'], item['B'], item['C']] for item in self.items_data]
@@ -284,22 +362,27 @@ class AmbigousARCDataset:
         # Create the dataset
         self.x = []
         self.y = []
-        self.example_items = [] if example_item else None
-        self.example_y = [] if example_item else None
+        self.example_items = [] if example_item != 'no_example' else None
+        self.example_y = [] if example_item != 'no_example' else None
         for item in self.items_data:
             # Update the seed for main items (mirrors are generated based on the main item)
             if item['id'].split('_')[1] == '1':
-                self.__seed_item = generate_seed(item['id'], self.seed)
-                seed_static_item = generate_seed(item['id'], seed_static)
+                seed_item = generate_seed(item['id'], self.seed)
+                seed_static_item = generate_seed(item['id'], seed_static) # For consistency across tasks
 
             # Set the seed for the item (otherwise it biases the answer options)
-            np.random.seed(self.__seed_item)
+            self.rng_item = np.random.default_rng(seed_item) 
             
-            if example_item:
-                # Get an example item that comes from a different concept
-                rng_static = np.random.default_rng(seed_static_item) # For consistency across tasks
-                other_items = [i for i in self.items_data if i['concept'] != item['concept']]
-                example_item_data = rng_static.choice(other_items)
+            if example_item != 'no_example':
+                seed_example = generate_seed(item['id'], seed_static) if mirror_type == 'example' else seed_static_item
+                rng_example = np.random.default_rng(seed_example) 
+                if example_item == 'different':
+                    # Get an example item that comes from a different concept
+                    other_items = [i for i in self.items_data if i['concept'] != item['concept']]
+                elif example_item == 'same':
+                    # Get an example item that comes from the same concept (different main item)
+                    other_items = [i for i in self.items_data if (i['concept'] == item['concept']) and (i['id'].split('_')[0] != item['id'].split('_')[0])]
+                example_item_data = rng_example.choice(other_items)
 
                 # Create the example item
                 example_prompt, example_y = getattr(self, task)(example_item_data, example=True)
@@ -310,10 +393,19 @@ class AmbigousARCDataset:
             formatted_item, y = getattr(self, task)(item, example=False)
 
             # Add the example to the item
-            formatted_item = f'EXAMPLE TASK:\n\n{example_prompt}\n\nTEST TASK:\n\n{formatted_item}' if example_item else formatted_item
+            formatted_item = f'EXAMPLE TASK:\n\n{example_prompt}\n\nTEST TASK:\n\n{formatted_item}' if example_item != 'no_example' else formatted_item
             self.x.append(formatted_item)
             self.y.append(y)
-                                        
+
+        if filter_items_list:
+            self.filter_items(filter_items_list)
+
+        if n_mirror > 0:
+            if self.task == 'discrimination' or (self.task == 'recognition' and self.mirror_type == 'color'):
+                assert has_exact_consecutive_elements(self.y, n_mirror + 1), f"Invalid number of mirror items: {n_mirror}"
+            if example_item != 'no_example' and mirror_type == 'color':
+                assert has_exact_consecutive_elements(self.example_items, n_mirror + 1), f"Invalid number of mirror items: {n_mirror}"
+                                            
     def __len__(self):
         return self.num_batches
     
@@ -328,7 +420,24 @@ class AmbigousARCDataset:
         batch_prompts = self.x[start_idx:end_idx]
         batch_answers = self.y[start_idx:end_idx]
         return batch_prompts, batch_answers
-    
+        
+    def filter_items(self, item_list: List[str]):
+        item_mask = [item['id'].split('_')[0] in item_list for item in self.items_data]
+        self.items_data = [item for item in self.items_data if item['id'].split('_')[0] in item_list]
+        self.size = len(self.items_data)
+        self.num_batches = self.calculate_n_batches(self.batch_size)
+        self.item_ids = [item['id'] for item in self.items_data]
+        self.item_main_ids = [i.split('_')[0] for i in self.item_ids]
+        self.n_items = len(self.item_main_ids)
+        self.concepts = [item['concept'] for item in self.items_data]
+        self.unique_concepts = sorted(set(self.concepts))
+        self.input_matrices = [[item['A'], item['B'], item['C']] for item in self.items_data]
+        self.x = [self.x[i] for i in range(len(self.x)) if item_mask[i]]
+        self.y = [self.y[i] for i in range(len(self.y)) if item_mask[i]]
+        if self.example_item != 'no_example':
+            self.example_items = [self.example_items[i] for i in range(len(self.example_items)) if item_mask[i]]
+            self.example_y = [self.example_y[i] for i in range(len(self.example_y)) if item_mask[i]]
+
     def generation(self, item: dict, example: bool=False) -> Tuple[str, List[str]]:
         mats = ['A', 'B', 'C', 'D_Concept'] if example else ['A', 'B', 'C', 'D_Matrix', 'D_Concept']
         arrays = item_to_arrays(item, matrices=mats)
@@ -341,13 +450,13 @@ class AmbigousARCDataset:
     def discrimination(self, item: dict, example: bool=False) -> Tuple[str, List[str]]:
         # Get the arrays for the item
         matrices = ['A', 'B', 'C', 'D_Matrix', 'D_Concept']
-        matrices += ['D_random'] if self.random_mat else []
+        matrices += ['D_Random'] if self.random_mat else []
         arrays = item_to_arrays(item, matrices=matrices)  
         
         # Create a duplicate answer option
         if self.duplicate == 'random':
             # Randomly duplicate one of the input matrices
-            arrays.append(arrays[np.random.choice([0, 1, 2])]) 
+            arrays.append(arrays[self.rng_item.choice([0, 1, 2])]) 
         elif self.duplicate in ['a', 'b', 'c']:
             # Duplicate the specified matrix
             arrays.append(arrays['abc'.index(self.duplicate)]) 
@@ -358,7 +467,7 @@ class AmbigousARCDataset:
 
         # Randomize answer order
         self.answer_options = [chr(97 + i) for i in range(len(arrays_str) - 3)]
-        idx = np.random.permutation(list(range(len(self.answer_options)))) 
+        idx = self.rng_item.permutation(list(range(len(self.answer_options)))) 
         for i in range(len(self.answer_options)):
             prompt += f'\n({self.answer_options[i]}) {arrays_str[3 + idx[i]]}'
         prompt += '\n\nAnswer: ('
@@ -388,7 +497,7 @@ class AmbigousARCDataset:
             concepts_choices = self.unique_concepts
 
         # Randomize the concepts
-        concepts = np.random.choice(concepts_choices, size=len(concepts_choices), replace=False)
+        concepts = self.rng_item.choice(concepts_choices, size=len(concepts_choices), replace=False)
         
         # Limit the number of concepts 
         concepts = concepts[:self.concept_answer_n]
@@ -396,7 +505,7 @@ class AmbigousARCDataset:
 
         # making sure the correct concept is included
         if item['concept'] not in concepts:
-            index = np.random.choice(range(len(concepts)))
+            index = self.rng_item.choice(range(len(concepts)))
             concepts[index] = item['concept']
 
         # Capitalize and remove underscores from the concepts
@@ -426,20 +535,21 @@ class AmbigousARCDataset:
             np.random.seed(seed)
 
         # Get the source matrices
-        source_mats = item_to_arrays(item, matrices=['A', 'B', 'C']) 
-        dim = source_mats[0].shape[0]
+        input_mats = item_to_arrays(item, matrices=['A', 'B', 'C'])
+        output_mats = item_to_arrays(item, matrices=['D_Concept', 'D_Matrix'])
+        dim = input_mats[0].shape[0]
 
         # The random matrix is created by randomly selecting columns and rows from the source matrices
         while True:
             random_mat = np.empty((dim, dim), dtype=int)
             for i in range(dim):
-                mat = source_mats[np.random.choice([0, 1, 2])]
+                mat = input_mats[np.random.choice(list(range(len(input_mats))))]
                 random_mat[:, i] = mat[:, np.random.choice(list(range(dim)))]
-                mat = source_mats[np.random.choice([0, 1, 2])]
+                mat = input_mats[np.random.choice(list(range(len(input_mats))))]
                 random_mat[i, :] = mat[np.random.choice(list(range(dim))), :]
             
             # Check if the random matrix is different from the source matrices
-            if not any([np.array_equal(random_mat, mat) for mat in source_mats]):
+            if not any([np.array_equal(random_mat, mat) for mat in input_mats + output_mats]):
                 return random_mat
 
     def mats_to_prompt(self, matrices: List[str], input_str: str = '') -> str:
@@ -451,7 +561,7 @@ class AmbigousARCDataset:
         input_str += f"Output 2:" if len(matrices) == 3 else f"Output 2: {matrices[3]}" 
         return input_str
 
-    def plot(self, item: int|str, title: str=None, show_mirrors: bool=False,  **kwargs):
+    def plot(self, item: int|str, title: str=None, show_mirrors: bool=False, return_fig: bool=False,  **kwargs):
         if isinstance(item, int):
             item_id = self.item_ids[item].split('_')[0]
         if isinstance(item, str):
@@ -466,18 +576,22 @@ class AmbigousARCDataset:
         if self.task == 'generation':
             mats += ['D_Matrix']
         if self.task == 'discrimination':
-            mats += ['D_Matrix', 'D_random']
+            mats += ['D_Matrix', 'D_Random']
 
         for item in items:
             arrs = item_to_arrays(item, matrices=mats)
             labels = mats[:3] + ['D'] if self.task == 'recognition' else mats
-            plot_item(arrays=arrs, title=title, labels=labels, **kwargs)
+            if return_fig:
+                return plot_item(arrays=arrs, title=title, labels=labels, return_fig=True, **kwargs)
+            else:
+                plot_item(arrays=arrs, title=title, labels=labels, **kwargs)
     
     def get_config(self) -> dict:
         return {
             'task': self.task,
             'example_item': self.example_item,
             'encoding': self.encoding,
+            'd_matrix_level': self.d_matrix_level,
             'random_mat': self.random_mat,
             'duplicate': self.duplicate,
             'concept_answer_n': self.concept_answer_n,
@@ -485,5 +599,7 @@ class AmbigousARCDataset:
             'seed_static': self.seed_static,
             'batch_size': self.batch_size,
             'n_mirror': self.n_mirror,
-            'example_item': self.example_item
+            'mirror_type': self.mirror_type,
+            'matrix_rotation': self.matrix_rotation,
+            'filter_items_list': self.filter_items_list
         }

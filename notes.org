@@ -30,3 +30,13 @@
 - string distances
 - copy option
 - run on more items
+
+
+
+===========
+- the same concept in example vs different
+    * what to do with recognition?
+- rotate the matrices for matrix vs row
+- different examples as mirror items
+- human vs model most common error generated responses as distractors [after human data collection]
+- Shapley values

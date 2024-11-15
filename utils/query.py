@@ -18,12 +18,13 @@ def query_model(
         temperature: float = 0.0,
         max_tokens: int = 100,
     ) -> Dict:
+    client_api = client.__class__.__name__
     # Set up the call configuration
     call_config = {
         'model': model,
         'temperature': temperature,
         'max_tokens': max_tokens,
-        'logprobs': 1 if logprobs else 0,
+        'logprobs': int(logprobs) if client_api == 'Together' else logprobs # Convert to binary for Together API
     }
 
     if chat:
@@ -43,11 +44,21 @@ def query_model(
     response = client.chat.completions.create(**call_config) if chat else client.completions.create(**call_config)
     
     # Extract the data
-    data = {
-        'message': response.choices[0].message.content if chat else response.choices[0].text,
-        'tokens': response.choices[0].logprobs.tokens if logprobs else None,
-        'logprobs': response.choices[0].logprobs.token_logprobs if logprobs else None
-    }
+    response = response.choices[0]
+    data = {'message': response.message.content if chat else response.text}
+    
+    if logprobs:
+        if client_api == 'Together':
+            data.update({
+                'tokens': response.logprobs.tokens,
+                'logprobs': response.logprobs.token_logprobs
+            })
+        elif client_api == 'OpenAI':
+            data.update({
+                'tokens': [token.token for token in response.logprobs.content],
+                'logprobs': [token.logprob for token in response.logprobs.content]
+            })
+
     if echo:
         # Prepend the echo to the message
         data['tokens'] = response.prompt[0].logprobs.tokens + data['tokens']
@@ -60,13 +71,12 @@ def run_experiment(
         client: OpenAI|Together,
         input_prompts: List[str],
         models: List[str],
+        results_path: str,
         system_prompt: str = None,
-        results_path: str = None,
         query_timeout: int = 60,  # Timeout in seconds for each model query
         rate_limit: float = 0.02,  # Time to sleep between queries
         **kwargs
     ) -> Dict:
-    assert results_path, "Results path is required"
     # Define a handler for the timeout
     def handler(signum, frame):
         raise TimeoutError
@@ -111,3 +121,6 @@ def run_experiment(
             json.dump(data, open(results_path, 'w'), indent=4)
 
     return data
+
+# openai_client = OpenAI()
+# run_experiment(openai_client, ['What is the capital of France?', 'What is the capital of Germany?'], ['gpt-4o-2024-08-06'], 'results.json', chat=True, logprobs=True, temperature=0.0, max_tokens=100)

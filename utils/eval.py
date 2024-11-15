@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 from rich import print as rprint
 from scipy.stats import chisquare
+from scipy.stats import entropy
+from statistics import mode
 import re
 import json
 
@@ -33,9 +35,37 @@ def elementwise_match(list1: List[Any], list2: List[Any]) -> List[int]:
 def get_all_zero_indices(*lists: List[int]) -> List[int]:
     return [1 if all(x == 0 for x in items) else 0 for items in zip(*lists)]
 
-# def accuracy(y_true: List[Any], y_pred: List[Any]) -> float:
-#     assert len(y_true) == len(y_pred), "Length of y_true and y_pred must be equal"
-#     return sum(get_correct_responses(y_true, y_pred))/len(y_true)
+def robustness_score(values: List[Any]) -> float:
+    mode_count = values.count(mode(values))
+    return (mode_count - 1) / (len(values) - 1)
+
+# def most_uniform_distribution(n, c):
+#     # If there are fewer values than categories, assign 1 to as many as possible
+#     if n < c:
+#         distribution = [1] * n + [0] * (c - n)
+#     else:
+#         # Calculate the quotient and remainder
+#         q, r = divmod(n, c)
+        
+#         # Create a list with 'q' values for each category
+#         distribution = [q] * c
+        
+#         # Distribute the remainder across the first 'r' categories
+#         for i in range(r):
+#             distribution[i] += 1
+    
+#     return [i/sum(distribution) for i in distribution]
+
+# def robustness_score(values, n_categories=4):
+#     assert max(values) < n_categories, "The maximum value should be less than the number of categories"
+#     category_counts = np.bincount(values, minlength=n_categories)
+#     proportions = category_counts / sum(category_counts)
+
+#     max_entropy = entropy(most_uniform_distribution(len(values), n_categories), base=2)  
+#     actual_entropy = entropy(proportions, base=2)  
+
+#     # Reverse the robustness score calculation
+#     return 1 - (actual_entropy / max_entropy)
 
 class ModelEval():
     def __init__(
@@ -70,12 +100,22 @@ class ModelEval():
             self.duplicate_responses = self.get_dup_gen_responses(self.dataset.input_matrices, self.clean_responses)
             self.other_responses = get_all_zero_indices(self.matrix_responses, self.concept_responses, self.duplicate_responses)
             
+            # Calculate robustness
+            if self.dataset.n_mirror > 0 and self.valid_responses_n > 0:
+                self.response_types = []
+                for i in range(self.dataset.size):
+                    if self.matrix_responses[i]: self.response_types.append('matrix')
+                    elif self.concept_responses[i]: self.response_types.append('concept')
+                    elif self.duplicate_responses[i]: self.response_types.append('duplicate')
+                    else: self.response_types.append('other')
+                self.robustness, self.robustness_per_item = self.calculate_robustness(self.response_types)
+            
             # Calculate the props
             self.matrix_prop = np.mean(self.matrix_responses)
             self.concept_prop = np.mean(self.concept_responses)
             self.duplicate_prop = np.mean(self.duplicate_responses)
             self.other_prop = np.mean(self.other_responses)
-            
+
         if self.dataset.task in ['discrimination', 'recognition']:
             # Get the possible tokens
             self.possible_tokens = self.get_possible_tokens(prepended_symbols, append_symbols)
@@ -95,6 +135,10 @@ class ModelEval():
                     self.choices.append(y.index(response_clean) if response_clean else None)
             
             self.valid_responses_n = len([i for i in self.clean_responses if i])
+            
+            # Calculate robustness
+            if self.dataset.n_mirror > 0 and self.valid_responses_n > 0:
+                self.robustness, self.robustness_per_item = self.calculate_robustness(self.clean_responses)
 
             # Props and responses
             if self.dataset.task == 'discrimination':
@@ -117,8 +161,9 @@ class ModelEval():
                 self.other_prop = np.mean(self.other_responses)
 
             # The same answer choice as example
-            example_y = [i[1] for i in self.dataset.example_y] if self.dataset.task == 'discrimination' else self.dataset.example_y
-            self.same_as_example = elementwise_match(example_y, self.clean_responses)
+            if self.dataset.example_item != 'no_example':
+                example_y = [i[1] for i in self.dataset.example_y] if self.dataset.task == 'discrimination' else self.dataset.example_y
+                self.same_as_example = elementwise_match(example_y, self.clean_responses)
 
             # Answer choices proportions
             self.answer_props = {}
@@ -168,21 +213,31 @@ class ModelEval():
     
     def prop_test(self, observed, expected) -> float:
         return chisquare(f_obs=observed, f_exp=expected)[1]
+    
+    def calculate_robustness(self, responses: List[Any]) -> Tuple[float, Dict]:
+        unique_main_items = list(dict.fromkeys(self.dataset.item_main_ids)) # Ordererd list of main item ids
+        robustness_per_item = {}
+        for item in unique_main_items:
+            responses_item = np.array(responses)[np.array(self.dataset.item_main_ids) == item]
+            robustness_per_item[item] = robustness_score(list(responses_item))
+        return np.mean(list(robustness_per_item.values())), robustness_per_item
 
 class Eval():
     def __init__(
         self,
         data: str,
         dataset: AmbigousARCDataset = None,
-        prop_test_thresh: float = 0.05,
-        no_response_thresh: float = 0.75
+        prop_test_thresh: float = None,
+        no_response_thresh: float = None
     ):
         # Load the results
         data = json.load(open(data, 'rb'))
         self.results = data['data'] 
-        dataset_config = data['dataset_config']
+        if dataset is None:
+            assert 'dataset_config' in data, 'Dataset configuration is missing'
+            dataset_config = data['dataset_config']
 
-        self.dataset = AmbigousARCDataset(**dataset_config) if dataset_config else dataset
+        self.dataset = dataset if dataset else AmbigousARCDataset(**dataset_config)
 
         self.question_type = self.dataset.task  
         self.all_models_n = len(self.results)
@@ -204,12 +259,12 @@ class Eval():
                 self.excluded_models_prop_test = [model for model in self.models if model.prop_test_p and model.prop_test_p < prop_test_thresh]
                 self.models = [model for model in self.models if model.prop_test_p and model.prop_test_p >= prop_test_thresh]
                 self.models_names = [model.name for model in self.models]
+                
+        # Robustness
+        self.robustness = [model.robustness for model in self.models]
+        self.robustness_per_item = pd.DataFrame({model.name: model.robustness_per_item for model in self.models})
 
-        # Get the response metrics
-        # self.concept_props = [model.concept_responses for model in self.models]
-        # self.matrix_props = [model.matrix_responses for model in self.models]
-        # self.other_responses = [model.other_responses for model in self.models]
-
+        # Construct the dataframe
         self.df = self.to_pd()
 
     def __str__(self):
@@ -240,12 +295,14 @@ class Eval():
             return None
         
         df_config = {
-            'item_main_id': np.tile([i.split('_')[0] for i in self.dataset.item_ids], len(self.models)),
+            'item_main_id': np.tile(self.dataset.item_main_ids, len(self.models)),
             'item_id': np.tile(self.dataset.item_ids, len(self.models)),
+            'mirror': [id.split('_')[1] for id in np.tile(self.dataset.item_ids, len(self.models))] if self.dataset.n_mirror > 0 else None,
             'model': np.repeat(self.models_names, self.dataset.size),
             'response': np.concatenate([model.clean_responses for model in self.models]),
             'concept': np.tile(self.dataset.concepts, len(self.models)),
         }
+        
         if self.dataset.task == 'discrimination':
             df_config['choice'] = [{0: 'matrix', 1: 'concept', 2: 'other', 3: 'duplicate'}.get(i) for i in np.concatenate([model.choices for model in self.models])] 
         df_config['concept_response'] = np.concatenate([model.concept_responses for model in self.models]) 
@@ -258,6 +315,7 @@ class Eval():
             df_config['logprobs'] = np.concatenate([[np.mean(logprobs) for logprobs in model.logprobs] for model in self.models])
         else:
             df_config['logprobs'] = np.concatenate([model.logprobs for model in self.models])
-            df_config['same_as_example'] = np.concatenate([model.same_as_example for model in self.models])
+            if self.dataset.example_item != 'no_example':
+                df_config['same_as_example'] = np.concatenate([model.same_as_example for model in self.models])
 
         return pd.DataFrame(df_config)
