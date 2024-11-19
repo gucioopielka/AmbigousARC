@@ -224,3 +224,6 @@ print(dataset_row_rotated.x[0])
 dataset_row_rotated.plot(0)
 
 # %%
+def plot_item_responses(item_id):
+    row.df[row.df['item_main_id'] == item_id].groupby('model')['concept_response'].mean().plot(kind='bar', figsize=(10, 5))
+plot_item_responses('MXPEB2')

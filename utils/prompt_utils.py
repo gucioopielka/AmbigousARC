@@ -249,6 +249,22 @@ def has_exact_consecutive_elements(lst, target_count):
     # Check the last sequence after the loop
     return current_count % target_count == 0
 
+def canonicize_item(item):
+    item = item.copy()
+    matrices = ['A', 'B', 'C', 'D_Concept', 'D_Matrix', 'D_Random']
+    # Get unique colors in the item
+    mats = ''
+    for k, v in item.items(): 
+        if k in matrices:
+            mats += v
+    colors = sorted(set([c for c in mats])) 
+    # Create a new color mapping
+    new_colors = {color: idx for idx, color in enumerate(colors)}
+    for k, v in item.items():
+        if k in matrices:
+            item[k] = ''.join([str(new_colors[c]) for c in v])
+    return item
+
 class AmbigousARCDataset:
     def __init__(
         self, 
@@ -263,6 +279,7 @@ class AmbigousARCDataset:
         n_iter_seed: int = 100,
         d_matrix_level: str = 'pixel',
         filter_items_list: List[str] = None,
+        canonicize: bool = False,
         seed: int = None,
         seed_static = 42,
         concept_answer_n: int = 4,
@@ -348,7 +365,11 @@ class AmbigousARCDataset:
         else: 
             for item in items_data:
                 item['id'] = item['id'] + '_1'
-
+        
+        # Canonicize the items
+        if canonicize:
+            assert n_mirror == 0, "Canonicize is not supported for mirror items"
+            items_data = [canonicize_item(item) for item in items_data]
 
         # Set the dataset properties
         self.items_data = items_data
