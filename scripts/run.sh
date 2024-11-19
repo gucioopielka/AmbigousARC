@@ -32,16 +32,16 @@ python3 query_models.py \
     --mirror_type example \
     --results_dir data/results/run_example_2024-11-12
 
-# Color encoding
-printf "\nRunning color encoding...\n"
-python3 query_models.py \
-    --models "${models[@]}" \
-    --concept_answer_n 4 \
-    --random_mat \
-    --find_best_seed \
-    --duplicate c \
-    --n_mirror 4 \
-    --example_item different \
-    --encoding color \
-    --mirror_type color \
-    --results_dir data/results/run_ColorEncoding_2024-11-13
+# # Color encoding
+# printf "\nRunning color encoding...\n"
+# python3 query_models.py \
+#     --models "${models[@]}" \
+#     --concept_answer_n 4 \
+#     --random_mat \
+#     --find_best_seed \
+#     --duplicate c \
+#     --n_mirror 4 \
+#     --example_item different \
+#     --encoding color \
+#     --mirror_type color \
+#     --results_dir data/results/run_ColorEncoding_2024-11-13

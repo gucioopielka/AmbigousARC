@@ -68,7 +68,6 @@ def query_model(
     return data
 
 def run_experiment(
-        client: OpenAI|Together,
         input_prompts: List[str],
         models: List[str],
         results_path: str,
@@ -82,10 +81,24 @@ def run_experiment(
         raise TimeoutError
     signal.signal(signal.SIGALRM, handler)
 
+    # Initialize Client APIs
+    together_client = Together()
+    openai_client = OpenAI()
+
+    # Get available models ids
+    together_models = [model.id for model in together_client.models.list()]
+    openai_models = [model.id for model in openai_client.models.list()]
+    
+    # Check if the models are available
+    for model in models:
+        if model not in together_models and model not in openai_models:
+            raise ValueError(f"Model {model} not found in available models")
+
     # Initialize dictionary to store the data
     if not os.path.exists(results_path):
         json.dump({'data': {}}, open(results_path, 'w'))  # Create an empty file
     data = json.load(open(results_path, 'r'))
+    
     # Remove models that have already been queried
     models = [model for model in models if model not in data['data'].keys()]        
     if not models:
@@ -95,6 +108,9 @@ def run_experiment(
     # Loop over models
     for idx, model in enumerate(models):
         print(f'_____ Model: {model} ({idx+1}/{len(models)}) _____')
+
+        # Get the client for the model
+        client = together_client if model in together_models else openai_client
 
         # Initialize a list to store the model responses
         model_responses = []
@@ -121,6 +137,3 @@ def run_experiment(
             json.dump(data, open(results_path, 'w'), indent=4)
 
     return data
-
-# openai_client = OpenAI()
-# run_experiment(openai_client, ['What is the capital of France?', 'What is the capital of Germany?'], ['gpt-4o-2024-08-06'], 'results.json', chat=True, logprobs=True, temperature=0.0, max_tokens=100)

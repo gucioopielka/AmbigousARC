@@ -4,6 +4,7 @@
 yaml() { python3 -c "import yaml; print('\n'.join(yaml.safe_load(open('$1'))$2))" ; }
 models=($(yaml globals.yml "['MODEL_IDS']"))
 
+# Set items
 items=(
     '0Zgi5T'
     '3qC5EW'
@@ -31,11 +32,15 @@ python3 query_models.py \
     --results_dir data/results/pixel_vs_row \
     --file_name pixel
 
+# Get best seed (the tasks are the same from now on)
+best_seed=$(jq -r '.dataset_config.seed' data/results/pixel_vs_row/pixel.json)
+
 printf "Running row...\n"
 python3 query_models.py \
     --models "${models[@]}" \
     --random_mat \
-    --find_best_seed \
+    --no-find_best_seed \
+    --seed $best_seed \
     --duplicate c \
     --n_mirror 4 \
     --example_item different \
@@ -46,34 +51,38 @@ python3 query_models.py \
     --results_dir data/results/pixel_vs_row \
     --file_name row
 
-printf "Running rotated pixels...\n"
-python3 query_models.py \
-    --models "${models[@]}" \
-    --random_mat \
-    --find_best_seed \
-    --duplicate c \
-    --n_mirror 4 \
-    --example_item different \
-    --encoding int \
-    --d_matrix_level pixel \
-    --matrix_rotation \
-    --filter_items_list "${items[@]}" \
-    --tasks discrimination \
-    --results_dir data/results/pixel_vs_row \
-    --file_name pixel_rotated
+for i in 90 180 270; do
+    printf "Running rotated ${i}...\n"
 
-printf "Running rotated rows...\n"
-python3 query_models.py \
-    --models "${models[@]}" \
-    --random_mat \
-    --find_best_seed \
-    --duplicate c \
-    --n_mirror 4 \
-    --example_item different \
-    --encoding int \
-    --d_matrix_level row \
-    --matrix_rotation \
-    --filter_items_list "${items[@]}" \
-    --tasks discrimination \
-    --results_dir data/results/pixel_vs_row \
-    --file_name row_rotated
+    python3 query_models.py \
+        --models "${models[@]}" \
+        --random_mat \
+        --no-find_best_seed \
+        --seed $best_seed \
+        --duplicate c \
+        --n_mirror 4 \
+        --example_item different \
+        --encoding int \
+        --d_matrix_level pixel \
+        --matrix_rotation $i \
+        --filter_items_list "${items[@]}" \
+        --tasks discrimination \
+        --results_dir data/results/pixel_vs_row \
+        --file_name pixel_rotated_${i}
+
+    python3 query_models.py \
+        --models "${models[@]}" \
+        --random_mat \
+        --no-find_best_seed \
+        --seed $best_seed \
+        --duplicate c \
+        --n_mirror 4 \
+        --example_item different \
+        --encoding int \
+        --d_matrix_level row \
+        --matrix_rotation $i \
+        --filter_items_list "${items[@]}" \
+        --tasks discrimination \
+        --results_dir data/results/pixel_vs_row \
+        --file_name row_rotated_${i}
+done

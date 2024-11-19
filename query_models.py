@@ -5,17 +5,9 @@ import warnings
 from typing import *
 import argparse
 from utils.globals import ITEMS_FILE, RESULTS_DIR
-from utils.prompt_utils import AmbigousARCDataset, has_exact_consecutive_elements
-from utils.query import run_experiment
-from together import Together
-from openai import OpenAI
+from utils.prompt_utils import AmbigousARCDataset
+from utils.query_utils import run_experiment
 
-together_client = Together()
-openai_client = OpenAI()
-
-together_model_list = [model.id for model in together_client.models.list() if model.type == 'chat']
-openai_model_list = []#TODO
-full_model_list = together_model_list + openai_model_list
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run the multiple choice experiment')
@@ -33,7 +25,7 @@ if __name__ == '__main__':
     parser.add_argument('--duplicate', type=str, default=None, help='Duplicate type')
     parser.add_argument('--encoding', type=str, default='int', help='Encoding type (int or color)')
     parser.add_argument('--d_matrix_level', type=str, default='pixel', help='D matrix level (pixel or row)')
-    parser.add_argument('--matrix_rotation', type=bool, default=False, help='Matrix rotation', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--matrix_rotation', type=int, default=0, help='Matrix rotation (0, 90, 180, 270)')
     parser.add_argument('--results_dir', type=str, help='Results directory')
     parser.add_argument('--example_item', type=str, default='different', help='Example item type (same, different or None)')
     parser.add_argument('--tasks', nargs='+', default=['generation', 'discrimination', 'recognition'], type=str, help='Tasks to run the experiment on')
@@ -42,11 +34,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-
-    if args.models:
-        for model in args.models:
-            if model not in full_model_list:
-                raise ValueError(f'Model "{model}" is not available')
 
     if args.seeds and len(args.seeds) != len(args.tasks):
         raise ValueError('The number of seeds should be equal to the number of tasks')
@@ -97,7 +84,7 @@ if __name__ == '__main__':
             d_matrix_level = args.d_matrix_level,
             matrix_rotation = args.matrix_rotation,
             filter_items_list = args.filter_items_list,
-            seed = args.seeds[idx] 
+            seed = args.seeds[idx]
                 if args.seeds 
                 else None,
             find_best_seed = args.find_best_seed 
@@ -109,12 +96,9 @@ if __name__ == '__main__':
         # Run the experiment
         print('Running the experiment...')
         results = run_experiment(
-            client = together_client,
             input_prompts = dataset.x, 
             logprobs = True,
-            models = args.models 
-                if args.models 
-                else full_model_list, 
+            models = args.models,
             system_prompt = "What is the concept that best describes the following task? Only give the answer, no other words or text."
                 if task == 'recognition' 
                 else "You are a helpful assistant that solves analogy making puzzles. Only give the answer, no other words or text.",

@@ -1,16 +1,17 @@
 import numpy as np
 from typing import *
+import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.colors import Normalize, ListedColormap
 
-def color_pallette() -> tuple:
+def ARC_cmap() -> Dict:
     '''
     Creates a color palette for the plots based on the int -> color mappings.
     '''
     color_list = [color_recode(num) for num in range(8)]
     cmap = ListedColormap(color_list)
     norm = Normalize(vmin=0, vmax=7)
-    return cmap, norm
+    return {'cmap': cmap, 'norm': norm}
 
 def color_recode(int_encoding) -> str:
     int_to_color = {
@@ -25,12 +26,19 @@ def color_recode(int_encoding) -> str:
     }
     return int_to_color[int_encoding]
 
-def plot_matrix(matrix: np.array, title: str, ax=None, size=14, grid_color='grey'):
+def plot_matrix(
+        matrix: np.array, 
+        title: str, 
+        ax=None, 
+        size=14, 
+        grid_color='grey',
+        cmap_cfg=None
+        ):
     fig, ax = plt.subplots() if ax is None else (None, ax)
-    cmap, norm = color_pallette()
+    cmap_cfg = ARC_cmap() if cmap_cfg is None else cmap_cfg
 
     # Use the created Axes object to draw the image
-    cax = ax.imshow(matrix, cmap=cmap, norm=norm)
+    cax = ax.imshow(matrix, **cmap_cfg)
     ax.set_title(title, size=size)
     
     # Customize the axis
@@ -52,20 +60,24 @@ def plot_item(
     title: str = None,
     labels: List[str] = ['A', 'B', 'C', 'D Concept', 'D Matrix'],
     return_fig: bool = False,
+    empty_idx: List[int] = None,
+    n_row: int = None,
     **kwargs
 ):  
-    assert len(arrays) in [4, 5, 6], f"Invalid number of arrays: {len(arrays)}"
+    #assert len(arrays) in [4, 5, 6], f"Invalid number of arrays: {len(arrays)}"
 
     # Initialize the subplots
-    n_row = 2 if len(arrays) == 4 else 3
+    if n_row is None:
+        n_row = 2 if len(arrays) == 4 else 3
     fig, ax = plt.subplots(n_row, 3, figsize=(4, n_row+2), dpi=300)
     axs = ax.flatten()
 
-    empty_idx = {
-        4: [1, 4],
-        5: [1, 4, 5, 7],
-        6: [1, 4, 5]
-    }.get(len(arrays))
+    if empty_idx is None:
+        empty_idx = {
+            4: [1, 4],
+            5: [1, 4, 5, 7],
+            6: [1, 4, 5]
+        }.get(len(arrays))
 
     # Plot the matrices
     arr_idx = 0
@@ -91,5 +103,29 @@ def plot_item(
     else:
         plt.show()
 
-arrays = [np.random.rand(5, 5) for _ in range(5)]
-plot_item(arrays, title='Random Matrices', return_fig=True)
+def get_percentage_ticks(df: pd.DataFrame) -> Tuple[np.array, List[str]]:
+    max_val = df.to_numpy().max()
+    max_val = (max_val // 0.1 + 1) * 0.1 # round up to the nearest 10%
+    linespace = np.linspace(0, max_val, num=6)
+    return linespace, [f'{x:.0%}' for x in linespace]
+
+
+# from matplotlib import cm
+# import torch
+
+# token_attr = torch.tensor([-0.9765625,  0.1796875, -0.125    , -0.3671875, -0.0703125,
+#        -0.3125   , -0.46875  , -0.0546875, -0.3125   , -0.703125 ,
+#        -0.046875 ,  0.0546875, -0.78125  , -0.3359375, -0.5234375,
+#        -1.046875 , -0.5546875, -0.65625  , -0.8984375, -0.3671875,
+#        -0.1484375, -0.484375 , -0.140625 , -0.4453125, -0.4296875,
+#        -0.03125  , -0.0703125])
+
+# max_abs_attr_val = token_attr.abs().max().item()
+
+# # Plot the heatmap
+# data = token_attr.numpy()
+# data = data.reshape((3,3,3))
+
+
+# cmap_cfg = dict(cmap=cm.RdYlGn, norm=Normalize(vmin=-max_abs_attr_val, vmax=max_abs_attr_val))
+# plot_item(data, cmap_cfg=cmap_cfg, empty_idx=[1, 4, 5], n_row=2)

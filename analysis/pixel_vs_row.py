@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from utils.globals import *
 from utils.prompt_utils import AmbigousARCDataset
-from utils.plot_utils import plot_item
+from utils.plot_utils import plot_item, get_percentage_ticks
 from utils.eval import Eval, ModelEval
 from utils.globals import ITEMS_FILE, RESULTS_DIR, get_model_name
 import matplotlib.pyplot as plt
@@ -156,48 +156,34 @@ df_row = gen_row_df.groupby('model')[response_cols].mean()
 plot_pixel_vs_row(df_pixel, df_row, 'Generation')
 
 #%% Rotated items
-file_row_rotated = os.path.join(RESULTS_DIR, 'pixel_vs_row/row_rotated.json')
-file_pixel_rotated = os.path.join(RESULTS_DIR, 'pixel_vs_row/pixel_rotated.json')
-row_rotated = Eval(file_row_rotated)
-pixel_rotated = Eval(file_pixel_rotated)
+response = 'matrix_response'
 
-# Means
-(row_mean, row_std), (row_rotated_mean, row_rotated_std), p_value = compare_means(row.df, row_rotated.df)
-rprint(
-    f"[u][i]Proportion Matrix Responses[/i][/u] (N = {len(row.df['model'].unique())})\n",
-    '\nRow:', 
-    f'[yellow][u]{row_mean:.2f}[/u][/yellow]', f'({row_std:.2f})', 
-    '\nRow Rotated:', 
-    f'[yellow][u]{row_rotated_mean:.2f}[/u][/yellow]', f'({row_rotated_std:.2f})',
-    '\n\nP-value:', 
-    f'[green]{p_value:.3f}[/green]' if p_value < 0.05 else f'[red]{p_value:.3f}[/red]', 
-)
+# Original
+row_ms = [row.df[response].mean()]
+row_sems = [row.df.groupby('model')[response].mean().sem()]
+pixel_ms = [pixel.df[response].mean()]
+pixel_sems = [pixel.df.groupby('model')[response].mean().sem()]
 
-(pixel_mean, pixel_std), (pixel_rotated_mean, pixel_rotated_std), p_value = compare_means(pixel.df, pixel_rotated.df)
-rprint(
-    f"[u][i]Proportion Matrix Responses[/i][/u] (N = {len(pixel.df['model'].unique())})\n",
-    '\nPixel:', 
-    f'[yellow][u]{pixel_mean:.2f}[/u][/yellow]', f'({pixel_std:.2f})', 
-    '\nPixel Rotated:', 
-    f'[yellow][u]{pixel_rotated_mean:.2f}[/u][/yellow]', f'({pixel_rotated_std:.2f})',
-    '\n\nP-value:', 
-    f'[green]{p_value:.3f}[/green]' if p_value < 0.05 else f'[red]{p_value:.3f}[/red]', 
-)
+# Rotated
+for angle in [90, 180, 270]:
+    file_row_rotated = os.path.join(RESULTS_DIR, f'pixel_vs_row/row_rotated_{angle}.json')
+    file_pixel_rotated = os.path.join(RESULTS_DIR, f'pixel_vs_row/pixel_rotated_{angle}.json')
+    row_rotated = Eval(file_row_rotated)
+    pixel_rotated = Eval(file_pixel_rotated)
 
-# Plot the means
-rotated_row_m, rotated_pixel_sem = row_rotated.df['matrix_response'].mean(), pixel_rotated.df['matrix_response'].sem()
-rotated_pixel_m, rotated_row_sem = pixel_rotated.df['matrix_response'].mean(), row_rotated.df['matrix_response'].sem()
-row_m, row_sem = row.df['matrix_response'].mean(), row.df['matrix_response'].sem()
-pixel_m, pixel_sem = pixel.df['matrix_response'].mean(), pixel.df['matrix_response'].sem()
+    row_ms.append(row_rotated.df[response].mean())
+    row_sems.append(row_rotated.df.groupby('model')[response].mean().sem())
+    pixel_ms.append(pixel_rotated.df[response].mean())
+    pixel_sems.append(pixel_rotated.df.groupby('model')[response].mean().sem())
 
 plt.figure(figsize=(4.5, 5))
-plt.errorbar([0.2, 1], [row_m, rotated_row_m], yerr=[row_sem, rotated_row_sem], fmt='o-', label='Row', color='darkblue')
-plt.errorbar([0.2, 1], [pixel_m, rotated_pixel_m], yerr=[pixel_sem, rotated_pixel_sem], fmt='o-', label='Pixel', color='darkred')
-plt.xticks([0.2, 1], ['Original', 'Rotated'], fontsize=12)
+plt.errorbar([0, 90, 180, 270], row_ms, yerr=row_sems, label='Row', color='blue', marker='o', capsize=5)
+plt.errorbar([0, 90, 180, 270], pixel_ms, yerr=pixel_sems, label='Pixel', color='red', marker='o', capsize=5)
+plt.xticks([0, 90, 180, 270], ['0', '90', '180', '270'])
 plt.ylabel('Matrix Response', fontsize=12)
-plt.ylim(0, 0.5)
+plt.ylim(0, 1)
 plt.legend(frameon=False)
-plt.yticks(np.arange(0, 0.6, 0.1), ['{:.0f}%'.format(i * 100) for i in np.arange(0, 0.6, 0.1)], fontsize=12)
+
 plt.gca().spines['top'].set_visible(False)
 plt.gca().spines['right'].set_visible(False)
 plt.gca().spines['bottom'].set_visible(False)

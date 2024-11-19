@@ -268,7 +268,7 @@ class AmbigousARCDataset:
         concept_answer_n: int = 4,
         n_mirror: int = 0,
         mirror_type: str = 'color',
-        matrix_rotation: bool = False
+        matrix_rotation: int = 0
     ):  
         assert task in ['generation', 'discrimination', 'recognition'], f'Invalid task "{task}"'
         assert example_item in ['same', 'different', 'no_example'], f'Invalid example item type "{example_item}"'
@@ -276,6 +276,7 @@ class AmbigousARCDataset:
         assert duplicate in [None, 'random', 'a', 'b', 'c'], f"Invalid duplicate type '{duplicate}'"
         assert d_matrix_level in ['pixel', 'row'], f"Invalid D matrix level '{d_matrix_level}'"
         assert mirror_type in ['color', 'example'], f"Invalid mirror type '{mirror_type}'"
+        assert matrix_rotation in [0, 90, 180, 270], f"Invalid matrix rotation '{matrix_rotation}'"
 
         # Load the items data
         if items_data is None:            
@@ -321,12 +322,15 @@ class AmbigousARCDataset:
                 items_data[idx]['D_Random'] = encode_array(self.random_matrix(item, seed_static))
 
         # Rotate the matrices
-        if matrix_rotation:
+        if matrix_rotation != 0:
             for idx, item in enumerate(items_data):
                 matrices = ['A', 'B', 'C', 'D_Concept', 'D_Matrix']
                 matrices += ['D_Random'] if random_mat and task == 'discrimination' else []
                 for mat in matrices:
-                    items_data[idx][mat] = encode_array(np.rot90(convert_to_array(item[mat], int(len(item['A'])**0.5))))
+                    rotated_matrix = convert_to_array(item[mat], int(len(item['A'])**0.5))
+                    for _ in range(matrix_rotation // 90):
+                        rotated_matrix = np.rot90(rotated_matrix)
+                    items_data[idx][mat] = encode_array(rotated_matrix)
 
         # Create mirror items
         if n_mirror > 0:
